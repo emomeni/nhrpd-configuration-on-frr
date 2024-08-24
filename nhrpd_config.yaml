@@ -1,0 +1,70 @@
+---
+- name: Enable nhrpd on servers with FRR installed
+  hosts: all
+  become: yes
+  vars:
+    frr_conf_path: "/etc/frr/frr.conf"  # Path to the main FRR configuration file
+    nhrpd_conf_path: "/etc/frr/nhrpd.conf"  # Path to the nhrpd configuration file
+
+  tasks:
+    - name: Check if FRR is installed
+      command: dpkg -l | grep frr
+      register: frr_installed
+      ignore_errors: yes
+
+    - name: Fail if FRR is not installed
+      fail:
+        msg: "FRR is not installed on this server."
+      when: frr_installed.rc != 0
+
+    - name: Enable nhrpd in FRR configuration
+      lineinfile:
+        path: "{{ frr_conf_path }}"
+        line: "nhrpd=yes"
+        state: present
+        create: yes
+        backup: yes
+      when: frr_installed.rc == 0
+
+    - name: Create nhrpd configuration file if not present
+      copy:
+        dest: "{{ nhrpd_conf_path }}"
+        content: |
+          # nhrpd configuration
+          debug nhrp
+          interface gre1
+            nhrp network-id 1
+            nhrp holdtime 300
+            nhrp nhs 192.168.1.1
+            nhrp shortcut
+            nhrp redirect
+          exit
+          interface nhrp1
+            nhrp nhs 192.168.1.1 nbma 10.0.0.1
+          exit
+        owner: frr
+        group: frr
+        mode: '0644'
+        when: frr_installed.rc == 0
+
+    - name: Ensure nhrpd is enabled in the FRR daemons file
+      lineinfile:
+        path: "/etc/frr/daemons"
+        regexp: '^nhrpd='
+        line: 'nhrpd=yes'
+        state: present
+        backup: yes
+      when: frr_installed.rc == 0
+
+    - name: Start and enable nhrpd service
+      systemd:
+        name: frr
+        state: restarted
+        enabled: yes
+      when: frr_installed.rc == 0
+
+    - name: Verify nhrpd service is running
+      command: systemctl status frr
+      register: frr_service_status
+      failed_when: "'active (running)' not in frr_service_status.stdout"
+      when: frr_installed.rc == 0

@@ -37,7 +37,7 @@ This playbook performs the following actions:
 ## Usage
 Run the playbook with the following command:
 ```bash
-ansible-playbook -i your_inventory_file enable_nhrpd.yml
+ansible-playbook -i your_inventory_file nhrpd_config.yaml
 ```
 Replace `your_inventory_file` with the path to your Ansible inventory file.
 
@@ -48,7 +48,7 @@ The following variables are defined in the playbook and can be customized:
 
 To override these variables, you can pass them directly via the command line:
 ```bash
-ansible-playbook -i your_inventory_file enable_nhrpd.yml -e "frr_conf_path=/custom/path/frr.conf"
+ansible-playbook -i your_inventory_file nhrpd_config.yaml -e "frr_conf_path=/custom/path/frr.conf"
 ```
 
 ## Playbook Tasks

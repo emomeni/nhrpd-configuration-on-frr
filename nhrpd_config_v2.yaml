@@ -1,0 +1,82 @@
+---
+- name: Enable nhrpd on servers with FRR installed
+  hosts: all
+  become: yes
+  vars:
+    frr_conf_path: "/etc/frr/frr.conf"  # Path to the main FRR configuration file
+    nhrpd_conf_path: "/etc/frr/nhrpd.conf"  # Path to the nhrpd configuration file
+
+  tasks:
+    - name: Gather installed packages
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Fail if FRR is not installed
+      ansible.builtin.fail:
+        msg: "FRR is not installed on this server."
+      when: "'frr' not in ansible_facts.packages"
+
+    - name: Enable nhrpd in FRR
+      block:
+        - name: Enable nhrpd in FRR configuration
+          ansible.builtin.lineinfile:
+            path: "{{ frr_conf_path }}"
+            line: "nhrpd=yes"
+            state: present
+            create: yes
+            backup: yes
+
+        - name: Create nhrpd configuration file if not present
+          ansible.builtin.copy:
+            dest: "{{ nhrpd_conf_path }}"
+            content: |
+              # nhrpd configuration
+              debug nhrp
+              interface gre1
+                nhrp network-id 1
+                nhrp holdtime 300
+                nhrp nhs 192.168.1.1
+                nhrp shortcut
+                nhrp redirect
+              exit
+              interface nhrp1
+                nhrp nhs 192.168.1.1 nbma 10.0.0.1
+              exit
+            owner: frr
+            group: frr
+            mode: '0644'
+
+        - name: Ensure nhrpd is enabled in the FRR daemons file
+          ansible.builtin.lineinfile:
+            path: "/etc/frr/daemons"
+            regexp: '^nhrpd='
+            line: 'nhrpd=yes'
+            state: present
+            backup: yes
+      when: "'frr' in ansible_facts.packages"
+      tags: nhrpd_setup
+
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
+    - name: Ensure frr service is running and enabled
+      ansible.builtin.systemd:
+        name: frr
+        state: restarted
+        enabled: yes
+      when: ansible_facts.services['frr.service'].state != 'running'
+      tags: frr_service
+
+    - name: Verify frr service is running
+      ansible.builtin.systemd:
+        name: frr
+        state: started
+      when: ansible_facts.services['frr.service'].state == 'running'
+      tags: frr_service_check
+
+# Improvements made:
+# Replaced command with package_facts to check if frr is installed. This is more idempotent and avoids unnecessary command calls.
+# Used block for related tasks, improving readability and enabling potential rollbacks.
+# Added tags (nhrpd_setup, frr_service, frr_service_check) for more granular control during playbook execution.
+# Replaced command system checks with service_facts and systemd module for idempotent handling of the service status and restarts.
+# Improved readability by breaking down complex tasks and using modules more effectively.
